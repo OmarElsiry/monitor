@@ -1,0 +1,166 @@
+# 🐳 Docker Compose for Nova TON Monitor Production Stack
+version: '3.8'
+
+services:
+  # Nova TON Monitor
+  nova-monitor:
+    build: .
+    container_name: nova-monitor
+    restart: unless-stopped
+    environment:
+      - ENVIRONMENT=production
+      - API_HOST=0.0.0.0
+      - API_PORT=5001
+      - DB_HOST=postgres
+      - DB_NAME=nova_ton_monitor
+      - DB_USER=nova_user
+      - DB_PASSWORD=${DB_PASSWORD}
+      - TON_API_KEY=${TON_API_KEY}
+      - TON_NETWORK=mainnet
+      - LOG_LEVEL=INFO
+      - LOG_JSON_FORMAT=true
+      - ENABLE_RATE_LIMITING=true
+      - REDIS_URL=redis://redis:6379
+    ports:
+      - "5001:5001"  # API
+      - "8080:8080"  # Health check
+      - "9090:9090"  # Metrics
+    volumes:
+      - nova_data:/app/data
+      - nova_logs:/app/logs
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - nova-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5001/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: nova-postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=nova_ton_monitor
+      - POSTGRES_USER=nova_user
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - POSTGRES_INITDB_ARGS=--auth-host=scram-sha-256
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+    networks:
+      - nova-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nova_user -d nova_ton_monitor"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis for Caching and Rate Limiting
+  redis:
+    image: redis:7-alpine
+    container_name: nova-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - nova-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # Nginx Reverse Proxy
+  nginx:
+    image: nginx:alpine
+    container_name: nova-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - nginx_logs:/var/log/nginx
+    depends_on:
+      - nova-monitor
+    networks:
+      - nova-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Prometheus for Metrics
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: nova-prometheus
+    restart: unless-stopped
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    ports:
+      - "9091:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    networks:
+      - nova-network
+
+  # Grafana for Dashboards
+  grafana:
+    image: grafana/grafana:latest
+    container_name: nova-grafana
+    restart: unless-stopped
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+    depends_on:
+      - prometheus
+    networks:
+      - nova-network
+
+volumes:
+  nova_data:
+    driver: local
+  nova_logs:
+    driver: local
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  nginx_logs:
+    driver: local
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local
+
+networks:
+  nova-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
