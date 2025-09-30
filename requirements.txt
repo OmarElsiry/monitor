@@ -1,0 +1,13 @@
+# 🚀 Essential Requirements for Nova TON Monitor (Render Optimized)
+# Core Framework
+Flask==3.0.0
+Flask-CORS==4.0.0
+
+# WSGI Server (for Render)
+gunicorn==21.2.0
+
+# Logging
+structlog==23.2.0
+
+# TON Blockchain (essential)
+tonsdk==1.0.15

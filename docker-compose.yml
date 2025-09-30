@@ -1,0 +1,74 @@
+version: '3.8'
+
+services:
+  # Nova TON Monitor
+  monitor:
+    build: .
+    container_name: nova-monitor
+    restart: unless-stopped
+    ports:
+      - "5001:5001"
+    environment:
+      - ENVIRONMENT=production
+      - API_HOST=0.0.0.0
+      - API_PORT=5001
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=nova_ton_monitor
+      - DB_USER=nova_user
+      - DB_PASSWORD=${DB_PASSWORD}
+      - REDIS_URL=redis://redis:6379/0
+      - TZ=UTC
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - nova-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: nova-postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=nova_user
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - POSTGRES_DB=nova_ton_monitor
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - nova-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nova_user"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis for caching and pub/sub
+  redis:
+    image: redis:7-alpine
+    container_name: nova-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    networks:
+      - nova-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+networks:
+  nova-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:

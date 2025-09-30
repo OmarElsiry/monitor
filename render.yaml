@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: nova-ton-monitor
+    runtime: python3
+    dockerfilePath: ./Dockerfile
+    buildCommand: ""
+    startCommand: gunicorn --bind 0.0.0.0:$PORT --workers 1 --threads 1 --timeout 30 --max-requests 1000 railway_app:app
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: PORT
+        generateValue: true
