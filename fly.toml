@@ -1,0 +1,25 @@
+app = "nova-ton-monitor"
+kill_signal = "SIGINT"
+kill_timeout = 5
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PORT = "8080"
+
+[[services]]
+  internal_port = 8080
+  processes = ["app"]
+  protocol = "tcp"
+
+  [[services.ports]]
+    handlers = ["http"]
+    port = 80
+
+  [[services.ports]]
+    handlers = ["tls", "http"]
+    port = 443
+
+[processes]
+  app = "gunicorn --bind 0.0.0.0:8080 --workers 1 --threads 1 --timeout 30 railway_app:app"
