@@ -1,0 +1,212 @@
+#!/usr/bin/env python3
+"""
+TON Address Normalizer
+Handles different TON address formats and normalizes them for consistent processing
+"""
+import re
+from typing import Optional
+
+class TONAddressNormalizer:
+    """
+    Normalizes TON addresses to handle different formats:
+    - EQ (bounceable user-friendly)
+    - UQ (non-bounceable user-friendly)  
+    - Raw hex format
+    """
+    
+#!/usr/bin/env python3
+"""
+TON Address Normalizer
+Handles different TON address formats and normalizes them for consistent processing
+"""
+import re
+import base64
+import zlib
+from typing import Optional, Tuple
+
+
+class TONAddressNormalizer:
+    """
+    Normalizes TON addresses to handle different formats:
+    - EQ (bounceable user-friendly)
+    - UQ (non-bounceable user-friendly)  
+    - Raw hex format
+    """
+    
+    @staticmethod
+    def _decode_user_friendly_address(address: str) -> Optional[Tuple[int, bytes, int]]:
+        """
+        Decode a user-friendly TON address to raw bytes and flags
+        Returns (workchain, hash_bytes, flags) or None if invalid
+        """
+        try:
+            # Remove prefix
+            if address.startswith(('EQ', 'UQ')):
+                data = address[2:]
+            else:
+                return None
+
+            # Decode base64url
+            try:
+                decoded = base64.urlsafe_b64decode(data + '=' * (4 - len(data) % 4))
+            except Exception:
+                return None
+
+            if len(decoded) != 36:  # 4 bytes flags + 32 bytes hash
+                return None
+
+            # Extract components
+            flags = int.from_bytes(decoded[0:1], byteorder='big')
+            workchain = int.from_bytes(decoded[1:2], byteorder='big', signed=True)
+            hash_bytes = decoded[2:34]
+
+            return workchain, hash_bytes, flags
+
+        except Exception:
+            return None
+
+    @staticmethod
+    def _encode_user_friendly_address(workchain: int, hash_bytes: bytes, flags: int) -> str:
+        """
+        Encode workchain, hash, and flags into user-friendly address
+        """
+        # Create payload: flags + workchain + hash
+        payload = bytes([flags]) + bytes([workchain]) + hash_bytes
+
+        # Add checksum (CRC32)
+        crc = zlib.crc32(payload) & 0xFFFFFFFF
+        payload_with_crc = payload + crc.to_bytes(4, byteorder='big')
+
+        # Encode to base64url
+        encoded = base64.urlsafe_b64encode(payload_with_crc).decode('utf-8').rstrip('=')
+
+        # Add prefix based on flags
+        if flags & 0x80:  # Bounceable
+            prefix = 'EQ'
+        else:  # Non-bounceable
+            prefix = 'UQ'
+
+        return prefix + encoded
+
+    @staticmethod
+    def normalize_address(address: str) -> str:
+        """
+        Normalize a TON address to UQ format (non-bounceable)
+        This ensures consistent address handling across the system
+        """
+        if not address:
+            return address
+        
+        address = address.strip()
+        
+        # If it's already UQ format, return as-is
+        if address.startswith('UQ'):
+            return address
+        
+        # Convert EQ to UQ (bounceable to non-bounceable)
+        if address.startswith('EQ'):
+            decoded = TONAddressNormalizer._decode_user_friendly_address(address)
+            if decoded:
+                workchain, hash_bytes, flags = decoded
+                # Convert to non-bounceable
+                non_bounceable_flags = flags & ~0x80  # Clear bounceable flag
+                return TONAddressNormalizer._encode_user_friendly_address(
+                    workchain, hash_bytes, non_bounceable_flags
+                )
+        
+        # If it's raw hex format, convert to UQ
+        if re.match(r'^[0-9a-fA-F]{64}$', address):
+            try:
+                hash_bytes = bytes.fromhex(address)
+                if len(hash_bytes) == 32:
+                    # Default to workchain 0, non-bounceable
+                    return TONAddressNormalizer._encode_user_friendly_address(0, hash_bytes, 0)
+            except Exception:
+                pass
+        
+        return address
+    
+    @staticmethod
+    def are_addresses_equivalent(addr1: str, addr2: str) -> bool:
+        """
+        Check if two addresses represent the same wallet
+        """
+        if not addr1 or not addr2:
+            return False
+        
+        # Normalize both addresses
+        norm1 = TONAddressNormalizer.normalize_address(addr1)
+        norm2 = TONAddressNormalizer.normalize_address(addr2)
+        
+        # Direct comparison
+        if norm1 == norm2:
+            return True
+        
+        # Check if they're the same except for EQ/UQ prefix
+        if (addr1.startswith('EQ') and addr2.startswith('UQ')) or \
+           (addr1.startswith('UQ') and addr2.startswith('EQ')):
+            # Compare the main part (excluding prefix and last few chars which might be checksum)
+            main1 = addr1[2:-6] if len(addr1) > 8 else addr1[2:]
+            main2 = addr2[2:-6] if len(addr2) > 8 else addr2[2:]
+            return main1 == main2
+        
+        return False
+    
+    @staticmethod
+    def get_address_variants(address: str) -> list:
+        """
+        Get all possible variants of an address for lookup
+        """
+        if not address:
+            return []
+        
+        variants = [address]
+        normalized = TONAddressNormalizer.normalize_address(address)
+        
+        if normalized != address:
+            variants.append(normalized)
+        
+        # Add EQ variant if we have UQ
+        if address.startswith('UQ'):
+            eq_variant = 'EQ' + address[2:]
+            variants.append(eq_variant)
+        
+        # Add UQ variant if we have EQ
+        if address.startswith('EQ'):
+            uq_variant = 'UQ' + address[2:]
+            variants.append(uq_variant)
+        
+        return list(set(variants))  # Remove duplicates
+
+def test_normalizer():
+    """Test the address normalizer"""
+    print("🧪 TESTING TON ADDRESS NORMALIZER")
+    print("=" * 50)
+    
+    normalizer = TONAddressNormalizer()
+    
+    # Test cases
+    test_cases = [
+        "EQAOvLwrhnaqkW_e1Qu8oZc3XB4WT64r6DmVZEnIOx9Qzk07",
+        "UQAOvLwrhnaqkW_e1Qu8oZc3XB4WT64r6DmVZEnIOx9QzhD-",
+        "UQDrY5iulWs_MyWTP9JSGedWBzlbeRmhCBoqsSaNiSLOs315",
+    ]
+    
+    for address in test_cases:
+        normalized = normalizer.normalize_address(address)
+        variants = normalizer.get_address_variants(address)
+        
+        print(f"Original: {address}")
+        print(f"Normalized: {normalized}")
+        print(f"Variants: {variants}")
+        print()
+    
+    # Test equivalence
+    addr1 = "EQAOvLwrhnaqkW_e1Qu8oZc3XB4WT64r6DmVZEnIOx9Qzk07"
+    addr2 = "UQAOvLwrhnaqkW_e1Qu8oZc3XB4WT64r6DmVZEnIOx9QzhD-"
+    
+    equivalent = normalizer.are_addresses_equivalent(addr1, addr2)
+    print(f"Are equivalent: {addr1[:20]}... and {addr2[:20]}... = {equivalent}")
+
+if __name__ == '__main__':
+    test_normalizer()
