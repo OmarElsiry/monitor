@@ -452,25 +452,91 @@ def create_channel_listing(verification_id: str, user_id: str, price: float) -> 
 # 🏥 HEALTH CHECK
 # =====================================================
 
+@app.route('/health', methods=['GET'])
+@app.route('/api/health', methods=['GET'])
 @app.route('/api/marketplace/health', methods=['GET'])
 def health_check():
-    """API health check."""
+    """API health check - available at multiple endpoints."""
     try:
         conn = get_db()
         cursor = conn.cursor()
+        
+        # Get basic health stats
         cursor.execute("SELECT COUNT(*) FROM channel_listings WHERE status = 'active'")
         active_listings = cursor.fetchone()[0]
+        
+        cursor.execute("SELECT COUNT(*) FROM users")
+        total_users = cursor.fetchone()[0]
+        
+        cursor.execute("SELECT COUNT(*) FROM user_balances")
+        total_balances = cursor.fetchone()[0]
+        
         conn.close()
         
         return jsonify({
             'status': 'healthy',
             'timestamp': datetime.now().isoformat(),
-            'active_listings': active_listings
+            'version': '1.0.0',
+            'services': {
+                'database': 'healthy',
+                'api_server': 'running',
+                'ton_monitor': 'active',
+                'marketplace': 'active'
+            },
+            'stats': {
+                'active_listings': active_listings,
+                'total_users': total_users,
+                'total_balances': total_balances
+            }
         })
         
     except Exception as e:
         return jsonify({
             'status': 'unhealthy',
+            'error': str(e),
+            'timestamp': datetime.now().isoformat()
+        }), 500
+
+@app.route('/api/info', methods=['GET'])
+def system_info():
+    """System information endpoint."""
+    try:
+        return jsonify({
+            'success': True,
+            'system': 'Nova TON Monitor',
+            'version': '1.0.0',
+            'status': 'running',
+            'endpoints': {
+                'health': ['/health', '/api/health', '/api/marketplace/health'],
+                'balance': '/api/balance/wallet/{address}',
+                'users': '/api/users/create',
+                'website': '/api/website/info'
+            },
+            'timestamp': datetime.now().isoformat()
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/website/info', methods=['GET'])
+def website_info():
+    """Website wallet information endpoint."""
+    try:
+        # Get website wallet from environment or config
+        website_wallet = os.getenv('WEBSITE_WALLET', 'UQDrY5iulWs_MyWTP9JSGedWBzlbeRmhCBoqsSaNiSLOs315')
+        
+        return jsonify({
+            'success': True,
+            'website_wallet': website_wallet,
+            'description': 'Main deposit wallet for Nova TON system',
+            'network': 'TON Mainnet',
+            'timestamp': datetime.now().isoformat()
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
             'error': str(e)
         }), 500
 
