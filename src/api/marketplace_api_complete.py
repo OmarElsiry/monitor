@@ -244,8 +244,8 @@ def initiate_purchase():
         if not listing_id:
             return jsonify({'error': 'Listing ID required'}), 400
         
-        # Create escrow transaction
-        result = await escrow_system.create_escrow_transaction(
+        # Create escrow transaction (remove await - make it synchronous)
+        result = escrow_system.create_escrow_transaction(
             listing_id, int(g.user_id), g.wallet_address
         )
         
@@ -277,7 +277,7 @@ def confirm_payment():
         if not transaction_id or not payment_hash:
             return jsonify({'error': 'Transaction ID and payment hash required'}), 400
         
-        result = await escrow_system.confirm_payment_received(transaction_id, payment_hash)
+        result = escrow_system.confirm_payment_received(transaction_id, payment_hash)
         
         if result['success']:
             return jsonify(result)
@@ -303,7 +303,7 @@ def confirm_transfer():
         if role not in ['buyer', 'seller']:
             return jsonify({'error': 'Role must be buyer or seller'}), 400
         
-        result = await escrow_system.confirm_ownership_transfer(
+        result = escrow_system.confirm_ownership_transfer(
             transaction_id, int(g.user_id), role
         )
         
