@@ -28,6 +28,21 @@ import sys
 # Add utils path for address normalization
 sys.path.append('./utils')
 
+# Import centralized server configuration
+try:
+    from config.server_config import server_config, get_server_url, get_api_base_url
+except ImportError:
+    # Fallback if config not available
+    class FallbackConfig:
+        @staticmethod
+        def get_server_url():
+            return "http://95.181.212.120:5001"
+        @staticmethod
+        def get_cors_origins():
+            return ["http://localhost:3000", "http://localhost:8080"]
+    server_config = FallbackConfig()
+    get_server_url = server_config.get_server_url
+
 # Import our custom modules
 from escrow_system import EscrowTransactionSystem
 
@@ -36,7 +51,16 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
-CORS(app)
+
+# Configure CORS with centralized origins
+try:
+    cors_origins = server_config.get_cors_origins()
+    CORS(app, origins=cors_origins)
+    logger.info(f"🌐 CORS configured for origins: {cors_origins}")
+except Exception as e:
+    # Fallback CORS configuration
+    CORS(app, origins=["*"])
+    logger.warning(f"⚠️ Using fallback CORS configuration: {e}")
 
 # Initialize systems
 escrow_system = EscrowTransactionSystem()
@@ -501,16 +525,20 @@ def health_check():
 def system_info():
     """System information endpoint."""
     try:
+        # Get server URL from centralized config
+        server_url = get_server_url()
+        
         return jsonify({
             'success': True,
             'system': 'Nova TON Monitor',
             'version': '1.0.0',
             'status': 'running',
+            'server_url': server_url,
             'endpoints': {
-                'health': ['/health', '/api/health', '/api/marketplace/health'],
-                'balance': '/api/balance/wallet/{address}',
-                'users': '/api/users/create',
-                'website': '/api/website/info'
+                'health': [f'{server_url}/health', f'{server_url}/api/health', f'{server_url}/api/marketplace/health'],
+                'balance': f'{server_url}/api/balance/wallet/{{address}}',
+                'users': f'{server_url}/api/users/create',
+                'website': f'{server_url}/api/website/info'
             },
             'timestamp': datetime.now().isoformat()
         })

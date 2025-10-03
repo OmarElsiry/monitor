@@ -47,10 +47,25 @@ class APIConfig:
     rate_limit: str = os.getenv('API_RATE_LIMIT', '100 per minute')
     max_content_length: int = int(os.getenv('API_MAX_CONTENT_LENGTH', '1048576'))  # 1MB
     
+    # Server URL Configuration - CENTRALIZED
+    server_protocol: str = os.getenv('SERVER_PROTOCOL', 'http')
+    server_host: str = os.getenv('SERVER_HOST', '95.181.212.120')
+    server_port: int = int(os.getenv('SERVER_PORT', '5001'))
+    
     # Security
     secret_key: str = os.getenv('API_SECRET_KEY', os.urandom(32).hex())
     jwt_secret: str = os.getenv('JWT_SECRET', os.urandom(32).hex())
     jwt_expiry_hours: int = int(os.getenv('JWT_EXPIRY_HOURS', '24'))
+    
+    @property
+    def server_url(self) -> str:
+        """Get the complete server URL."""
+        return f"{self.server_protocol}://{self.server_host}:{self.server_port}"
+    
+    @property
+    def base_api_url(self) -> str:
+        """Get the base API URL."""
+        return f"{self.server_url}/api"
 
 @dataclass
 class MonitoringConfig:

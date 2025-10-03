@@ -19,8 +19,15 @@ def start_api_server():
     """Start the API server in a separate thread."""
     try:
         print("🌐 Starting API server...")
+        from config.server_config import server_config
         from api.marketplace_api_complete import app
-        app.run(host='0.0.0.0', port=5001, debug=False, threaded=True)
+        
+        # Use centralized configuration
+        host = '0.0.0.0'  # Bind to all interfaces
+        port = server_config.PORT
+        
+        print(f"🌐 Server will be accessible at: {server_config.get_server_url()}")
+        app.run(host=host, port=port, debug=False, threaded=True)
     except Exception as e:
         print(f"❌ API server error: {e}")
 
